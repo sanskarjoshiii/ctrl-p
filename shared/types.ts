@@ -129,6 +129,49 @@ export interface CreateOrderPayload {
 
 export type OrderStatus = 'awaiting_files' | 'received' | 'in_production' | 'shipped' | 'delivered' | 'cancelled';
 
+/** Artefacts produced for the printer. `cover_pdf` / `interior_pdf` are the
+ *  split cover-wrap mode, which needs the printer's spine formula first. */
+export type PrintFileKind = 'cmyk_pdf' | 'cover_pdf' | 'interior_pdf';
+export type PrintFileStatus = 'queued' | 'processing' | 'ready' | 'failed';
+
+export interface PrintCheck {
+  name: string;
+  pass: boolean;
+  blocking: boolean;
+  detail: string;
+}
+
+/** What the admin order detail shows about a generated PDF. */
+export interface PrintFileReport {
+  pageCount: number;
+  trimMm: { width: number; height: number };
+  bleedMm: number;
+  minPpi: number;
+  maxInkPct: number;
+  p999InkPct: number;
+  iccProfileName: string;
+  pdfxVersion: string | null;
+  durationMs: number;
+  checks: PrintCheck[];
+}
+
+export interface PrintFileRecord {
+  id: string;
+  orderId: string;
+  itemIndex: number;
+  kind: PrintFileKind;
+  status: PrintFileStatus;
+  /** File name only — the absolute path is never handed to a client. */
+  fileName: string | null;
+  bytes: number | null;
+  sha256: string | null;
+  error: string | null;
+  attempts: number;
+  report: PrintFileReport | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface OrderRecord {
   id: string;
   createdAt: string;

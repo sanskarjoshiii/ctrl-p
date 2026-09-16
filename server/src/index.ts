@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { MulterError } from 'multer';
 import { ordersRouter, ValidationError } from './orders.ts';
+import { startPrintWorker } from './print/queue.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -29,4 +30,7 @@ const onError: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 app.use(onError);
 
-app.listen(PORT, () => console.log(`Book Diaries API on http://localhost:${PORT}${serveWeb ? ' (serving web/dist)' : ''}`));
+app.listen(PORT, () => {
+  console.log(`Book Diaries API on http://localhost:${PORT}${serveWeb ? ' (serving web/dist)' : ''}`);
+  startPrintWorker();
+});
