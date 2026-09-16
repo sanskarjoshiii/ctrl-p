@@ -127,7 +127,32 @@ export interface CreateOrderPayload {
   paymentMethod: PaymentMethod;
 }
 
-export type OrderStatus = 'awaiting_files' | 'received' | 'in_production' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus =
+  | 'awaiting_files'
+  | 'received'
+  | 'ready_to_print'
+  | 'printing'
+  | 'binding'
+  | 'quality_check'
+  | 'packed'
+  | 'shipped'
+  | 'delivered'
+  | 'on_hold'
+  | 'cancelled'
+  | 'returned';
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cod' | 'cod_collected' | 'refunded' | 'partially_refunded';
+
+/** Client-side print checks, sent with the upload so the admin can show them. */
+export interface PreflightSummary {
+  emptyFrames: number;
+  lowResPhotos: number;
+  missingPhotos: number;
+  photosPlaced: number;
+  /** Page indexes, in book order, that carry a warning. */
+  emptyPages: number[];
+  lowResPages: number[];
+}
 
 /** Artefacts produced for the printer. `cover_pdf` / `interior_pdf` are the
  *  split cover-wrap mode, which needs the printer's spine formula first. */
@@ -172,13 +197,36 @@ export interface PrintFileRecord {
   updatedAt: string;
 }
 
+export interface OrderItemRecord extends OrderItemPayload {
+  unitPrice: number;
+  filesReceived: number;
+  /** Print checks the customer's browser ran before ordering. */
+  preflight?: PreflightSummary | null;
+}
+
 export interface OrderRecord {
   id: string;
   createdAt: string;
+  updatedAt: string;
   status: OrderStatus;
-  paymentStatus: 'pending' | 'paid' | 'cod';
+  paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
   customer: CustomerDetails;
-  items: (OrderItemPayload & { unitPrice: number; filesReceived: number })[];
+  items: OrderItemRecord[];
   totals: ReturnType<typeof import('./pricing.ts').cartTotals>;
+  /** Operations fields, all set from the admin. */
+  shippingMethod: ShippingKey;
+  /** Date the order must leave by, from the shipping method's SLA. */
+  shipBy: string | null;
+  carrier: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  holdReason: string | null;
+  /** Status the order paused at, so coming off hold resumes in the right place. */
+  holdFrom: OrderStatus | null;
+  assignedTo: string | null;
+  tags: string[];
 }

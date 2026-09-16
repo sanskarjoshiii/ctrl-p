@@ -54,10 +54,13 @@ web/           React 19 + TypeScript + Vite
   src/store/     Zustand stores: projects (immer undo history, IndexedDB autosave), cart, toasts
   src/lib/       Photo import, image cache, page renderer, preview cache, API client, fonts
   src/styles/    Design tokens and the doodle UI kit
+  src/admin/     Staff dashboard at /admin (separate lazy bundle)
   public/covers/ Cover art: -sm.webp (cards), .webp (editor), -print.jpg (2700×3600)
 server/        Express 5 + node:sqlite
   src/orders.ts  Quote, create order, page uploads, payment stub, order lookup
+  src/admin/     Admin API: auth & roles, order queries, status machine, print downloads
   src/print/     Print-ready CMYK PDF pipeline: queue, colour conversion, PDF/X writer, prepress checks
+  src/email/     Customer email templates and the pluggable transport
 covers/        Source generator for the 10 illustrated covers (node covers/build.js)
 ```
 
@@ -70,6 +73,8 @@ covers/        Source generator for the 10 illustrated covers (node covers/build
 | Collage layouts / stickers | `web/src/editor/layouts.ts`, `web/src/editor/stickers.ts` |
 | Brand colours, fonts, UI kit | `web/src/styles/base.css`, `web/src/styles/kit.css` |
 | Payment gateway | `POST /api/orders/:id/pay` in `server/src/orders.ts` (currently a demo that marks online orders paid) |
+| Order lifecycle, roles and permissions | `shared/admin.ts` — the API and the admin UI both read it |
+| Customer emails and courier tracking links | `server/src/email/index.ts` |
 | Print output: bleed, ink limit, PDF/X standard, ICC profile | `server/src/print/config.ts` — see [Print-ready PDFs](#print-ready-pdfs) |
 
 ## Data & print files
@@ -130,10 +135,75 @@ If the ink check fails, the destination profile is wrong for that paper — that
 
 Phase 1 converts the JPEGs the browser already uploads, so: page text is raster at 300 ppi rather than vector (near-black text separates as a four-colour black, not 100% K), pages are compressed twice, and the bleed is mirrored rather than real artwork. Cover-wrap output (`coverMode: "split"`) is not built — it needs the printer's spine-width formula. See issue #1 for the phase 2 and 3 plans.
 
+## Admin dashboard
+
+`/admin` is the internal dashboard: incoming orders, each diary's pages, production status, shipping, notes and exports. It is a separate lazy-loaded bundle, is never linked from the storefront, and marks itself `noindex`.
+
+Create the first account, then sign in:
+
+```bash
+npm run admin:user -w server -- --email you@example.com --name "Your Name" --role owner
+npm run admin:user -w server -- --list
+```
+
+The password can be passed with `--password`, piped on stdin, or left out and generated for you. Running the command again for an existing email resets that password.
+
+### Roles
+
+Enforced server-side on every endpoint — the UI hiding a button is a courtesy, not the control.
+
+| | Owner | Operations | Support |
+|---|:-:|:-:|:-:|
+| View dashboard, orders, customers | ✅ | ✅ | ✅ |
+| Notes, tags, resend emails | ✅ | ✅ | ✅ |
+| Edit shipping address (before dispatch) | ✅ | ✅ | ✅ |
+| Change fulfilment status | ✅ | ✅ | ❌ |
+| Enter tracking, mark shipped | ✅ | ✅ | ❌ |
+| Download print files and page images | ✅ | ✅ | ❌ |
+| Cancel order | ✅ | ✅ | ❌ |
+| Refunds, pricing, team | ✅ | ❌ | ❌ |
+
+Sessions are httpOnly + `SameSite=Strict` cookies with a 12-hour idle timeout, refreshed on each request. An account locks for 15 minutes after 5 failed sign-ins, and there is a per-IP throttle on top. Passwords are hashed with scrypt (`node:crypto`) — see the note in `server/src/admin/auth.ts` for why, not argon2id.
+
+### Order lifecycle
+
+```
+awaiting_files → received → ready_to_print → printing → binding
+    → quality_check → packed → shipped → delivered
+
+on_hold     from any pre-shipped state, reason required, resumes where it paused
+cancelled   before printing; after printing, owner only. Reason required
+returned    from shipped or delivered. Reason required
+```
+
+The machine lives in `shared/admin.ts` and is the single source of truth: the API rejects anything else with a 409, and the UI reads the same table to decide which button to show. Two rules worth knowing — nothing reaches `ready_to_print` until payment is settled (or COD confirmed), and `shipped` requires a carrier and tracking number. Every change writes an `order_events` row with the actor, and so does every view of unmasked personal data, every print-file download and every CSV export.
+
+### What's here
+
+- **Overview** — KPI cards against the previous period, a "needs attention" queue for each thing that can go wrong (incomplete uploads, stale payments, print-check warnings, failed PDFs, SLA and ship-by breaches), orders/revenue per day, status funnel, product mix and an activity feed. Each queue count links to the filtered list that produced it.
+- **Orders** — filters, search (order ID, name, email, phone, PIN code), sort, saved views, server-side pagination, and CSV export of whatever is filtered. Every filter is in the URL, so a view can be pasted to someone else.
+- **Order detail** — status stepper and the next valid action, customer and delivery with an editable address, per-diary print files with the prepress report and a Regenerate button, a zoomable gallery of every page in book order, the customer's print-check warnings, totals, shipping, notes, tags and the full activity timeline.
+
+### Emails
+
+There is no email provider wired up yet. The default transport renders each message and writes it to `server/data/emails/`, and logs an `email_sent` event on the order — so the shipped mail is fully built and addressed today, and ops can read exactly what the customer would receive. Point `setEmailTransport()` in `server/src/email/index.ts` at a real provider when you pick one.
+
+Tracking links come from `COURIER_TRACKING_URLS`, a JSON object of carrier to URL template:
+
+```bash
+COURIER_TRACKING_URLS='{"Bluedart":"https://bluedart.example/track?awb={awb}"}'
+BUSINESS_NAME="Book Diaries"
+SUPPORT_EMAIL=support@example.com
+```
+
+### Not in this phase
+
+Production kanban and batching, job sheets, reprints, the customers section, payments and refunds (they need the gateway first), reports, and the pricing, promo-code and catalogue editors. See issue #2 for phases 2 and 3.
+
 ## Before going live
 
 - Connect a real payment gateway (e.g. Razorpay or Stripe) with webhook verification. Remove the “demo mode” note in `Checkout.tsx`.
-- Confirmation emails and an admin view for orders (`server/data` is the source today). Print PDFs are generated but are not downloadable yet — that endpoint needs the admin session from issue #2.
+- Wire up an email provider — see [Emails](#emails); today they are written to disk, not sent.
 - Have the printer sign off the output spec (ICC profile, bleed, ink limit, PDF/X flavour) and approve a physical test print of a Medium and a Large diary.
 - Customer accounts / cloud drafts if people should continue on another device.
 - Replace the example promo code, contact email and brand name placeholders.

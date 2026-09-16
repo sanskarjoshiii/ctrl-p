@@ -5,10 +5,12 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { bookPrice, cartTotals, SHIPPING, type ShippingKey } from '../../shared/pricing.ts';
 import type { OrderRecord } from '../../shared/types.ts';
+import { shipByDate } from '../../shared/admin.ts';
+import { orderEvents } from './admin/store.ts';
 import { orders } from './db.ts';
 import { itemDir } from './paths.ts';
 import { enqueueOrder } from './print/queue.ts';
-import { parseOrderPayload, ValidationError } from './validate.ts';
+import { parseOrderPayload, parsePreflight, ValidationError } from './validate.ts';
 
 const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newOrderId = () => 'BD-' + Array.from({ length: 8 }, () => ID_ALPHABET[randomInt(ID_ALPHABET.length)]).join('');
@@ -68,17 +70,40 @@ ordersRouter.post('/quote', (req, res) => {
 ordersRouter.post('/orders', (req, res) => {
   const payload = parseOrderPayload(req.body);
   const totals = cartTotals(payload.items, payload.shipping, payload.promoCode);
+  const createdAt = new Date().toISOString();
   const order: OrderRecord = {
     id: newOrderId(),
-    createdAt: new Date().toISOString(),
+    createdAt,
+    updatedAt: createdAt,
     status: 'awaiting_files',
     paymentStatus: payload.paymentMethod === 'cod' ? 'cod' : 'pending',
     paymentMethod: payload.paymentMethod,
     customer: payload.customer,
-    items: payload.items.map(i => ({ ...i, unitPrice: bookPrice(i.options, i.pages).unit, filesReceived: 0 })),
+    items: payload.items.map(i => ({ ...i, unitPrice: bookPrice(i.options, i.pages).unit, filesReceived: 0, preflight: null })),
     totals,
+    shippingMethod: payload.shipping,
+    shipBy: shipByDate(createdAt, payload.shipping),
+    carrier: null,
+    trackingNumber: null,
+    shippedAt: null,
+    deliveredAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    holdReason: null,
+    holdFrom: null,
+    assignedTo: null,
+    tags: [],
   };
   orders.insert(order);
+  orderEvents.record({
+    orderId: order.id,
+    type: 'created',
+    toStatus: order.status,
+    actorType: 'customer',
+    actorName: order.customer.name,
+    note: `${order.items.length} diary(s), ${order.items.reduce((n, i) => n + i.qty, 0)} book(s)`,
+    data: { total: order.totals.total, paymentMethod: order.paymentMethod, shipping: order.shippingMethod },
+  });
   res.status(201).json({
     order: publicView(order),
     uploads: order.items.map((item, index) => ({ index, expectedFiles: item.pages + 2, url: `/api/orders/${order.id}/items/${index}/files` })),
@@ -103,9 +128,21 @@ ordersRouter.post('/orders/:id/items/:index/files', (req, res, next) => {
     }
     if (typeof req.body.project === 'string') writeFileSync(path.join(itemDir(order.id, index), 'project.json'), req.body.project);
     item.filesReceived = files.length;
+    // The browser already ran the print checks; carrying them over means the
+    // admin can see the warnings without the customer's device.
+    item.preflight = parsePreflight(req.body.preflight);
     const complete = order.items.every(i => i.filesReceived === i.pages + 2);
     if (complete) order.status = 'received';
     orders.update(order);
+    orderEvents.record({
+      orderId: order.id,
+      type: 'files_received',
+      toStatus: complete ? 'received' : null,
+      actorType: 'customer',
+      actorName: order.customer.name,
+      note: `Diary ${index + 1}: ${files.length} page images`,
+      data: item.preflight ? { preflight: item.preflight } : null,
+    });
     // Queue the print PDFs once every diary has arrived. Generation is
     // asynchronous by design: this response must not wait minutes for it.
     if (complete) enqueueOrder(order);
@@ -120,6 +157,13 @@ ordersRouter.post('/orders/:id/pay', (req, res) => {
   if (order.paymentMethod === 'online' && order.paymentStatus === 'pending') {
     order.paymentStatus = 'paid';
     orders.update(order);
+    orderEvents.record({
+      orderId: order.id,
+      type: 'payment_changed',
+      actorType: 'system',
+      note: 'Marked paid (demo payment)',
+      data: { from: 'pending', to: 'paid' },
+    });
   }
   res.json({ order: publicView(order), mode: 'demo' });
 });
