@@ -1,0 +1,82 @@
+/* ——— Tokens ——— */
+:root {
+  color-scheme: light;
+  --paper: #fffdef;
+  --paper-deep: #faf5dc;
+  --white: #ffffff;
+  --ink: #141414;
+  --ink-soft: #3d3d38;
+  --muted: #6f6f66;
+  --shadow: #a3a396;
+  --rule: #e9e6d2;
+
+  --pink: #f4afd3;
+  --pink-soft: #ffd0ee;
+  --yellow: #ffd93d;
+  --yellow-soft: #ffeb99;
+  --sky: #bfe6ff;
+  --blue: #4f9dff;
+  --lilac: #c9a8ff;
+  --coral: #ff5a52;
+  --mint: #a9e6c3;
+  --orange: #ffb23f;
+
+  --font-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-hand: 'Caveat Brush', 'Comic Sans MS', cursive;
+  --font-mono: 'Courier Prime', ui-monospace, 'Courier New', monospace;
+
+  --bw: 3px;
+  --bw-thick: 4px;
+  --hard: 8px 8px 0 var(--shadow);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --wrap: 1240px;
+  --gutter: clamp(16px, 4vw, 48px);
+
+  /* Whole-site scale. 0.8 renders the UI like browser zoom at 80% (desktop/tablet only;
+     phones stay at 100% for readable text and touch targets). */
+  --zoom: 1;
+  /* Full viewport height in zoomed CSS pixels — use instead of 100vh. */
+  --screen-h: calc(100vh / var(--zoom));
+}
+@media (min-width: 900px) {
+  :root { --zoom: 0.8; }
+}
+@supports (height: 100dvh) {
+  :root { --screen-h: calc(100dvh / var(--zoom)); }
+}
+html { zoom: var(--zoom); }
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 17px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img, svg { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.08; letter-spacing: -0.02em; font-weight: 700; }
+p { margin: 0; }
+::selection { background: var(--yellow); }
+
+:focus-visible { outline: 3px dashed var(--ink); outline-offset: 4px; }
+
+.wrap { width: 100%; max-width: var(--wrap); margin-inline: auto; padding-inline: var(--gutter); }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.hand { font-family: var(--font-hand); font-weight: 400; letter-spacing: 0; }
+.mono { font-family: var(--font-mono); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.78rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}

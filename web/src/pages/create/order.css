@@ -1,0 +1,39 @@
+.order { padding-block: 26px 70px; }
+.order__grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: clamp(30px, 5vw, 70px); align-items: start; }
+.order__visual { position: sticky; top: 24px; display: grid; place-items: center; aspect-ratio: 0.9; border: var(--bw-thick) solid var(--ink); box-shadow: 14px 14px 0 var(--shadow); }
+.order__size-tag { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--white); padding: 4px 12px; border: 2px solid var(--ink); white-space: nowrap; }
+.order__form h1 { font-size: clamp(2.2rem, 4vw, 3.2rem); font-weight: 600; margin: 6px 0 10px; }
+.order__block { padding-block: 22px; border-bottom: 2px dashed var(--rule); }
+.order__block h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 12px; }
+.order__row { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+
+.opt-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.opt-card { position: relative; display: grid; gap: 2px; padding: 14px 16px; border: var(--bw) solid var(--ink); border-radius: 14px; background: var(--white); cursor: pointer; transition: transform 0.15s var(--ease), box-shadow 0.15s, background 0.15s; }
+.opt-card:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+.opt-card input { position: absolute; opacity: 0; pointer-events: none; }
+.opt-card:has(input:focus-visible) { outline: 3px dashed var(--ink); outline-offset: 3px; }
+.opt-card.is-on { background: var(--yellow-soft); box-shadow: 4px 4px 0 var(--ink); }
+.opt-card strong { font-size: 1.1rem; }
+.opt-card__note { font-size: 0.86rem; color: var(--ink-soft); }
+.opt-card__price { margin-top: 6px; font-weight: 700; font-size: 0.9rem; }
+.opt-card__check { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid var(--ink); border-radius: 50%; background: var(--white); color: transparent; }
+.opt-card.is-on .opt-card__check { background: var(--ink); color: var(--white); }
+
+.toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.toggle input { position: absolute; opacity: 0; }
+.toggle__box { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: var(--bw) solid var(--ink); border-radius: 8px; background: var(--white); color: transparent; transition: background 0.15s; }
+.toggle input:checked + .toggle__box { background: var(--mint); color: var(--ink); }
+.toggle input:focus-visible + .toggle__box { outline: 3px dashed var(--ink); outline-offset: 3px; }
+
+.checks { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
+.check { display: flex; gap: 12px; align-items: flex-start; }
+.check p { font-size: 0.88rem; color: var(--ink-soft); }
+.check__icon { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border: 2px solid var(--ink); border-radius: 50%; background: var(--mint); }
+.check--warn .check__icon { background: var(--yellow); }
+.check--error .check__icon { background: var(--coral); color: var(--white); }
+
+@media (max-width: 900px) {
+  .order__grid { grid-template-columns: 1fr; }
+  .order__visual { position: relative; top: 0; max-width: 460px; width: 100%; margin-inline: auto; }
+}
+.order__visual .leaf__loading { position: absolute; inset: 0; background: linear-gradient(90deg, #f4efe0, #fffdf5, #f4efe0); background-size: 200% 100%; animation: shimmer 1.2s infinite; }

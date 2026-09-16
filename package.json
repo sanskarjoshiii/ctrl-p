@@ -1,0 +1,17 @@
+{
+  "name": "book-diaries",
+  "private": true,
+  "description": "Book Diaries — custom travel photo diaries: template shop, photo-book editor, cart & ordering.",
+  "workspaces": [
+    "web",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w web && npm run typecheck -w server",
+    "start": "npm run start -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
