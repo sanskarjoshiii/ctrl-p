@@ -57,6 +57,7 @@ web/           React 19 + TypeScript + Vite
   public/covers/ Cover art: -sm.webp (cards), .webp (editor), -print.jpg (2700×3600)
 server/        Express 5 + node:sqlite
   src/orders.ts  Quote, create order, page uploads, payment stub, order lookup
+  src/print/     Print-ready CMYK PDF pipeline: queue, colour conversion, PDF/X writer, prepress checks
 covers/        Source generator for the 10 illustrated covers (node covers/build.js)
 ```
 
@@ -69,6 +70,7 @@ covers/        Source generator for the 10 illustrated covers (node covers/build
 | Collage layouts / stickers | `web/src/editor/layouts.ts`, `web/src/editor/stickers.ts` |
 | Brand colours, fonts, UI kit | `web/src/styles/base.css`, `web/src/styles/kit.css` |
 | Payment gateway | `POST /api/orders/:id/pay` in `server/src/orders.ts` (currently a demo that marks online orders paid) |
+| Print output: bleed, ink limit, PDF/X standard, ICC profile | `server/src/print/config.ts` — see [Print-ready PDFs](#print-ready-pdfs) |
 
 ## Data & print files
 
@@ -78,10 +80,61 @@ covers/        Source generator for the 10 illustrated covers (node covers/build
   - `project.json` — the editable design, for reprints or fixes
 - Order creation is two-step so large uploads can show progress and be retried: `POST /api/orders` validates and prices the order, then each diary uploads to `POST /api/orders/:id/items/:index/files`. The server checks the page count.
 
+## Print-ready PDFs
+
+When the last diary in an order finishes uploading, the server queues one **print-ready CMYK PDF per diary** — front cover, pages 1…N, back cover — and writes it to `server/data/orders/<orderId>/item-N/print/`. Generation is asynchronous; the upload response never waits for it.
+
+| | |
+|---|---|
+| Trim size | Medium **150 × 200 mm**, Large **210 × 280 mm** |
+| Bleed | 3 mm on every side, mirrored from the edge pixels; `TrimBox`/`BleedBox` set per page |
+| Colour | DeviceCMYK, converted with your printer's ICC profile |
+| Standard | PDF/X-4 (or PDF/X-1a:2001) with the profile embedded as the OutputIntent |
+| Code | `server/src/print/` — `build.ts` assembles, `color.ts` converts, `writer.ts` emits the PDF, `verify.ts` checks it |
+
+**An ICC profile is required.** Browsers only produce sRGB, so the conversion happens on the server, and without a destination profile it would not be colour managed — the job fails with that message rather than sending unmanaged colour to the press. Put the profile your printer supplies somewhere readable and point at it:
+
+```bash
+PRINT_ICC_PROFILE=/srv/profiles/ISOcoated_v2_eci.icc
+PRINT_ICC_PROFILE_NAME="ISO Coated v2 (ECI)"
+```
+
+Every job runs eight automated prepress checks (page count and order, page boxes to ±0.1 mm, no RGB images, ≥300 ppi at final size, total ink coverage, embedded OutputIntent, PDF/X declaration) and is only marked `ready` if the blocking ones pass. Failures retry three times with backoff and keep the reason in `print_files.error`.
+
+```bash
+npm run print:pdf    -w server -- BD-XXXXXXXX      # rebuild an order's PDFs, with the report
+npm run print:pdf    -w server -- BD-XXXXXXXX 1 --dry-run
+npm run print:sample -w server -- --size large --pages 24 --keep
+```
+
+`print:sample` builds a synthetic diary — neon covers, small near-black text, very dark pages — which is the quickest way to check a new profile or a changed bleed before pointing it at real orders.
+
+### Settings
+
+Defaults live in `server/src/print/config.ts`, are overridden by `server/data/print.config.json`, and then by environment variables. The ones marked *confirm* below are sensible defaults that **your printer has to sign off before launch**:
+
+| Setting | Env | Default | |
+|---|---|---|---|
+| Bleed | `PRINT_BLEED_MM` | `3` | *confirm* |
+| Minimum resolution | `PRINT_MIN_PPI` | `300` | |
+| Ink limit | `PRINT_MAX_INK_PCT` | `300` | *confirm* — measured at the 99.9th percentile |
+| Enforce ink limit | `PRINT_ENFORCE_INK_LIMIT` | `1` | off makes it advisory |
+| Standard | `PRINT_PDFX_STANDARD` | `PDF/X-4` | *confirm* — or `PDF/X-1a:2001`, `none` |
+| Crop marks | `PRINT_CROP_MARKS` | `0` | *confirm* — the page boxes already carry the trim |
+| JPEG quality | `PRINT_JPEG_QUALITY` | `95` | |
+| Retries | `PRINT_MAX_ATTEMPTS` | `3` | |
+
+If the ink check fails, the destination profile is wrong for that paper — that is a conversation with the printer, not something to fix per pixel.
+
+### Known limits
+
+Phase 1 converts the JPEGs the browser already uploads, so: page text is raster at 300 ppi rather than vector (near-black text separates as a four-colour black, not 100% K), pages are compressed twice, and the bleed is mirrored rather than real artwork. Cover-wrap output (`coverMode: "split"`) is not built — it needs the printer's spine-width formula. See issue #1 for the phase 2 and 3 plans.
+
 ## Before going live
 
 - Connect a real payment gateway (e.g. Razorpay or Stripe) with webhook verification. Remove the “demo mode” note in `Checkout.tsx`.
-- Confirmation emails and an admin view for orders (`server/data` is the source today).
+- Confirmation emails and an admin view for orders (`server/data` is the source today). Print PDFs are generated but are not downloadable yet — that endpoint needs the admin session from issue #2.
+- Have the printer sign off the output spec (ICC profile, bleed, ink limit, PDF/X flavour) and approve a physical test print of a Medium and a Large diary.
 - Customer accounts / cloud drafts if people should continue on another device.
 - Replace the example promo code, contact email and brand name placeholders.
 - Put `server/data` on persistent storage and back it up.

@@ -5,14 +5,14 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { bookPrice, cartTotals, SHIPPING, type ShippingKey } from '../../shared/pricing.ts';
 import type { OrderRecord } from '../../shared/types.ts';
-import { orders, ORDERS_DIR } from './db.ts';
+import { orders } from './db.ts';
+import { itemDir } from './paths.ts';
+import { enqueueOrder } from './print/queue.ts';
 import { parseOrderPayload, ValidationError } from './validate.ts';
 
 const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newOrderId = () => 'BD-' + Array.from({ length: 8 }, () => ID_ALPHABET[randomInt(ID_ALPHABET.length)]).join('');
 const ORDER_ID = /^BD-[A-Z2-9]{8}$/;
-
-const itemDir = (orderId: string, index: number) => path.join(ORDERS_DIR, orderId, `item-${index + 1}`);
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -103,8 +103,12 @@ ordersRouter.post('/orders/:id/items/:index/files', (req, res, next) => {
     }
     if (typeof req.body.project === 'string') writeFileSync(path.join(itemDir(order.id, index), 'project.json'), req.body.project);
     item.filesReceived = files.length;
-    if (order.items.every(i => i.filesReceived === i.pages + 2)) order.status = 'received';
+    const complete = order.items.every(i => i.filesReceived === i.pages + 2);
+    if (complete) order.status = 'received';
     orders.update(order);
+    // Queue the print PDFs once every diary has arrived. Generation is
+    // asynchronous by design: this response must not wait minutes for it.
+    if (complete) enqueueOrder(order);
     res.json({ order: publicView(order) });
   });
 });
