@@ -1,6 +1,6 @@
 import { BINDINGS, PAPERS, PAGE_RULES, SHIPPING, SIZES } from '../../shared/pricing.ts';
 import { getTemplate } from '../../shared/catalog.ts';
-import type { CreateOrderPayload, CustomerDetails } from '../../shared/types.ts';
+import type { CreateOrderPayload, CustomerDetails, PreflightSummary } from '../../shared/types.ts';
 
 export class ValidationError extends Error {
   constructor(public fields: Record<string, string>) {
@@ -61,4 +61,32 @@ export function parseOrderPayload(body: unknown): CreateOrderPayload {
 
   if (Object.keys(errors).length) throw new ValidationError(errors);
   return { customer, items, shipping, paymentMethod, promoCode: str(b.promoCode, 30) || undefined } as CreateOrderPayload;
+}
+
+/**
+ * Print-check results the browser sends with each diary's upload. Untrusted
+ * input shown to staff, so every field is clamped to a sane count and page
+ * indexes are bounded by the diary's own page count.
+ */
+export function parsePreflight(raw: unknown, maxPages = 130): PreflightSummary | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const p = parsed as Record<string, unknown>;
+  const count = (v: unknown) => Math.max(0, Math.min(9999, Math.trunc(Number(v)) || 0));
+  const pages = (v: unknown) =>
+    Array.isArray(v) ? [...new Set(v.map(n => Math.trunc(Number(n))).filter(n => Number.isInteger(n) && n >= 0 && n < maxPages))].slice(0, maxPages) : [];
+  return {
+    emptyFrames: count(p.emptyFrames),
+    lowResPhotos: count(p.lowResPhotos),
+    missingPhotos: count(p.missingPhotos),
+    photosPlaced: count(p.photosPlaced),
+    emptyPages: pages(p.emptyPages),
+    lowResPages: pages(p.lowResPages),
+  };
 }

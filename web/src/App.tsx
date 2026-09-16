@@ -30,6 +30,12 @@ const router = createBrowserRouter([
     ],
   },
   {
+    // Staff only: a separate lazy bundle, never linked from the storefront.
+    path: 'admin/*',
+    lazy: lazyPage(() => import('./admin/AdminApp')),
+    errorElement: <RouteError />,
+  },
+  {
     path: 'create/:projectId',
     element: <CreateLayout />,
     errorElement: <RouteError />,

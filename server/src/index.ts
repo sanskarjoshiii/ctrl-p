@@ -2,6 +2,8 @@ import express, { type ErrorRequestHandler } from 'express';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { MulterError } from 'multer';
+import { adminRouter } from './admin/router.ts';
+import { purgeExpiredSessions } from './admin/auth.ts';
 import { ordersRouter, ValidationError } from './orders.ts';
 import { startPrintWorker } from './print/queue.ts';
 
@@ -14,6 +16,7 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/admin', adminRouter);
 app.use('/api', ordersRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
@@ -33,4 +36,6 @@ app.use(onError);
 app.listen(PORT, () => {
   console.log(`Book Diaries API on http://localhost:${PORT}${serveWeb ? ' (serving web/dist)' : ''}`);
   startPrintWorker();
+  purgeExpiredSessions();
+  setInterval(purgeExpiredSessions, 60 * 60 * 1000).unref();
 });
